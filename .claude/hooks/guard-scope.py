@@ -26,7 +26,7 @@ from pathlib import Path
 # Add extra always-allowed paths here. Use ~/ for home-relative.
 EXTRA_ROOTS = [
     # "~/code",
-    # "~/Local Sites",
+    # "~/scratch",
 ]
 
 PATH_PARAM_BY_TOOL = {
