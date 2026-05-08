@@ -12,10 +12,12 @@ A reproducible Claude Code setup with persistent memory, scoped tool access, and
 ## Install
 
 ```bash
-git clone <your-fork> ~/claude-code-starter
+git clone https://github.com/kapupasta/claude-code-starter ~/claude-code-starter
 cd ~/claude-code-starter
 ./install.sh
 ```
+
+(Or fork it first if you want to track your own customizations under your account.)
 
 The installer asks for your workspace root (e.g. `~/code` or `~/projects`), renames the placeholder project dir to match, and symlinks `~/.claude/{settings.json,hooks,skills}` into this repo. Memory lives at `~/.claude/projects/<your-slug>/memory/` and is symlinked back into the repo so it gets versioned.
 
