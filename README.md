@@ -37,6 +37,10 @@ That's it. Use Claude normally. Memory accretes as you give feedback. Run `/pre-
 - Not a plugin set. Plugins are personal; install your own via `/plugin` after setup.
 - Not a productivity system. It's the substrate. The discipline is yours.
 
+## License
+
+MIT — see [LICENSE](LICENSE). Fork, modify, redistribute freely.
+
 ## Uninstall
 
 ```bash
