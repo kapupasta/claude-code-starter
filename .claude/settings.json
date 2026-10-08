@@ -1,8 +1,27 @@
 {
+  "cleanupPeriodDays": 90,
   "permissions": {
+    "deny": [
+      "Bash(claude *)"
+    ],
+    "ask": [
+      "Bash(dangerouslyDisableSandbox:true)"
+    ],
     "defaultMode": "auto"
   },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/prompt-provenance.py 2>/dev/null || true",
+            "timeout": 30,
+            "statusMessage": "Checking prompt provenance..."
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Read|Write|Edit|MultiEdit|NotebookEdit|Glob|Grep|Bash",
@@ -19,6 +38,19 @@
           {
             "type": "command",
             "command": "python3 ~/.claude/hooks/memory-load-check.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/env-guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/guard-command-shape.py"
           }
         ]
       }
@@ -33,6 +65,68 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/hooks/md-link-check.py"
+          }
+        ]
+      }
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "allowUnsandboxedCommands": true,
+    "network": {
+      "allowedDomains": [
+        "codeload.github.com",
+        "objects.githubusercontent.com",
+        "raw.githubusercontent.com",
+        "registry.npmjs.org",
+        "pypi.org",
+        "files.pythonhosted.org",
+        "code.claude.com"
+      ],
+      "strictAllowlist": true,
+      "allowLocalBinding": true
+    },
+    "filesystem": {
+      "allowWrite": [
+        "~/.npm"
+      ]
+    },
+    "credentials": {
+      "files": [
+        { "path": "~/.ssh", "mode": "deny" },
+        { "path": "~/.aws/credentials", "mode": "deny" },
+        { "path": "~/.claude.json", "mode": "deny" }
+      ],
+      "envVars": [
+        { "name": "GITHUB_TOKEN", "mode": "deny" },
+        { "name": "NPM_TOKEN", "mode": "deny" }
+      ]
+    },
+    "excludedCommands": [
+      "git fetch *",
+      "git push *",
+      "git pull *",
+      "gh pr view *",
+      "gh pr list *",
+      "gh pr diff *",
+      "gh pr checks *",
+      "gh run view *",
+      "gh run list *",
+      "gh issue view *",
+      "gh issue list *"
+    ]
+  },
+  "autoMode": {
+    "environment": [
+      "$defaults"
     ]
   },
   "autoCompactEnabled": true

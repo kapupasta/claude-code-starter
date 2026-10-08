@@ -1,0 +1,5 @@
+# Written by install.sh; holds your local paths
+.claude/hooks/starter-config.json
+.claude/hooks/__pycache__/
+__pycache__/
+.DS_Store

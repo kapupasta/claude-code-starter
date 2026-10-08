@@ -1,6 +1,6 @@
 # Two habits that make this work
 
-The starter wires up a memory directory, three hooks, and a pre-clear skill — but the wiring is inert without two small disciplines. Without them, the memory dir rots, the hooks fire as noise, and you end up with a system that's harder than no system. With them, context survives between sessions and the agent gets sharper over time.
+The starter wires up a memory directory, seven hooks, a sandbox and a pre-clear skill — but the wiring is inert without two small disciplines. Without them, the memory dir rots, the hooks fire as noise, and you end up with a system that's harder than no system. With them, context survives between sessions and the agent gets sharper over time.
 
 You don't need to memorise the file structure or the tag vocabulary. You need these two habits.
 
@@ -18,7 +18,7 @@ That's it. A simple list of which files it Read.
 
 **Why it matters.** The whole memory system is invisible by default — files get loaded silently, or not at all. When the agent says nothing, you have no way to know whether it's working from a real understanding of the project or making it up. The announcement is your only window into that. If it forgets to announce, you've spotted the failure before it costs you anything.
 
-**You don't have to enforce it manually.** The `memory-load-check.py` hook does the enforcement: if you mention a project but no `project_*.md` was Read, you get three soft warnings and then a hard block on the next Edit/Write/Bash. The hook exists *because* announcement is critical, not as bureaucracy. When it fires, that's the system catching a real bug.
+**You don't have to enforce it manually.** The `memory-load-check.py` hook does the enforcement: if you mention a project but no `project_*.md` was Read, Claude gets three warnings in its context, and the fourth Edit/Write/Bash is denied. The hook exists *because* announcement is critical, not as bureaucracy. When it fires, that's the system catching a real bug.
 
 If the agent silently skips the announcement, prompt: *"What memory did you load?"* — that recalibrates it for the rest of the session.
 
@@ -28,7 +28,7 @@ If the agent silently skips the announcement, prompt: *"What memory did you load
 
 Before you `/clear`, run `/pre-clear`. Always. Even when the session feels small.
 
-The skill walks five steps: git status sweep, memory review, optional resume note, todo sweep, optional CLAUDE.md update. Most steps will be no-ops most of the time — that's fine. The ones that aren't are the ones that would have lost you something.
+The skill walks seven steps: friction nominations, memory saves, workflow-stream notes, an optional resume note, a todo sweep, a CLAUDE.md check, and git status last. Most steps will be no-ops most of the time — that's fine. The ones that aren't are the ones that would have lost you something.
 
 **Why it matters.** Sessions accrete value in two places: the working tree (uncommitted code) and the agent's understanding (un-saved feedback, decisions, project status changes). `/clear` wipes the second silently and never warns about the first. Without `/pre-clear`, every clear is a small leak. Over weeks the leaks compound: you re-explain the same preferences, re-discover the same gotchas, re-debug the same issues.
 
@@ -46,7 +46,7 @@ The system is designed to feel mostly empty at first. That's correct.
 
 **Resist the urge to pre-populate.** Don't sit down and try to write all your gotchas up front — you'll write generic stuff that doesn't survive contact with reality. Save when something is actually surprising or non-obvious, in the moment, with the *why* attached. That's what makes the memory worth loading later.
 
-**Resist the urge to disable the hooks.** When `guard-scope.py` blocks a Bash command or `memory-load-check.py` warns you, the friction is the feature. The hook is asking "are you sure?" because the action is unusual — sometimes you are sure (then approve the call or load the memory it's asking for), sometimes you're not (then you've just dodged a mistake). Disabling them removes the safety, not the cause.
+**Resist the urge to disable the hooks.** When `guard-scope.py` or `guard-command-shape.py` blocks a command, or `memory-load-check.py` warns, the friction is the feature. The hook is asking "are you sure?" because the action is unusual — sometimes you are sure (then approve the call or load the memory it's asking for), sometimes you're not (then you've just dodged a mistake). Disabling them removes the safety, not the cause. If the same block fires twice for a good reason, fix the hook or the config (`starter-config.json`), and see [WHY.md](WHY.md) for what each one protects.
 
 ---
 

@@ -1,0 +1,8 @@
+{
+  "workspace_root": "~/code",
+  "extra_roots": [],
+  "readonly_roots": ["~/.agents"],
+  "roster_file": "~/code/PROJECTS.md",
+  "memory_dir": "~/.claude/projects/-Users-you-code/memory",
+  "scratch_dir": "~/code/tmp"
+}
