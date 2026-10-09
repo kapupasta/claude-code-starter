@@ -44,6 +44,8 @@ cd ~/claude-code-starter
 
 Fork it first if you want your changes versioned under your own account. Your memory lives inside the repo, so **keep your fork private**.
 
+**No terminal needed after this.** The Claude desktop app's Code tab reads the same `~/.claude` config as the terminal, so everything here works there too. Tested on macOS: the hooks fire, the sandbox blocks, and stepping outside it still asks you first. Install once from a terminal, then work wherever you like. (Claude Code on the web is different: it runs in a cloud machine and reads only what's committed to your repo, so none of this applies there.)
+
 The installer:
 
 1. Asks for your workspace root (`~/code`, `~/projects`, …).
