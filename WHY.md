@@ -16,9 +16,30 @@ Each entry has the same three parts:
 
 The sandbox is an operating-system boundary around the shell commands Claude runs (Seatbelt on macOS, bubblewrap on Linux and WSL2; native Windows has none). Inside it, a command can write only to the working directory, `$TMPDIR` and the paths you list in `allowWrite`, and it can reach only the network hosts you allow.
 
-- **Prevents:** a command doing more than you meant it to. That covers a mistyped `rm` outside the project, a build script or package install that phones home, and a prompt injection in a web page or README that talks Claude into exfiltrating data with `curl`. Because the OS enforces the limits, Claude Code can also run sandboxed commands **without asking you each time**. So the sandbox doesn't just add safety, it also takes away a large share of permission prompts.
+- **Prevents:** a command doing more than you meant it to. That covers a mistyped `rm` outside the project, a build script or package install that phones home, and a prompt injection in a web page or README that talks Claude into exfiltrating data with `curl`. Because the OS enforces the limits, Claude Code can also run sandboxed commands **without asking you each time**. Anthropic measured "sandboxing safely reduces permission prompts by 84%" in its own use ([source](https://www.anthropic.com/engineering/claude-code-sandboxing)). So the sandbox doesn't just add safety, it also takes away most permission prompts.
 - **Without it:** every Bash command runs with your full user rights, and your only protection is the permission prompt (or, in auto mode, a classifier that decides for you, so no human sees the call). Auto mode without a sandbox means an unattended agent with full shell access.
-- **Turn it off:** set `"enabled": false`, or delete the `sandbox` block. **Risk:** the above. If you do, at least switch `defaultMode` away from `auto`, so a human approves each command.
+- **Turn it off:** set `"enabled": false`, or delete the `sandbox` block. **Risk:** the attacks below, every one of which happened in public. If you do, at least switch `defaultMode` away from `auto`, so a human approves each command.
+
+#### The attacks it's built against
+
+These are real, published attacks on coding agents and developer machines. The sandbox in this starter was switched on after reading the first one.
+
+**1. Auto mode beaten by a ZIP file (Embrace The Red, Aug 2026).** A prompt injection in a page Claude was asked to summarise pushed it from WebFetch to `curl`, which downloaded a ZIP. Claude *correctly refused* the decoder binary inside and wrote its own Python decoder instead, then ran it inside the unzipped folder. There a planted `struct.py` replaced Python's standard module, and the attacker had code execution. In the author's words: "I got attack success rates up to 80% using a small sample size." Anthropic closed the report as "working as designed": auto mode is a best-effort classifier, not a security boundary. The safety refusal *was* the exploit path, and the classifier saw only a clean five-line decoder. The author's advice is to run agents "in a container, VM or OS sandbox" and "restrict network egress". ([source](https://embracethered.com/blog/posts/2026/breaking-claude-code-opus-5-and-automode/))
+→ *What the sandbox does:* the payload still runs, but inside the fence. It can't read `~/.ssh` or the credential files you list, it can't call home to any host outside `allowedDomains`, and it can't write into your shell startup files or Claude's own config to persist. `deny: Bash(claude *)` stops the variant that launched a second, unrestricted Claude.
+
+**2. Secrets leaked through DNS, no approval needed (CVE-2025-55284, 2025).** An injected instruction in a source file made Claude Code read `.env` and put the values into a `ping` hostname, so the data left as a DNS lookup to the attacker's server. It needed no approval because `ping`, `nslookup`, `host` and `dig` were on the auto-approved list. Fixed in v1.0.4 by removing them. ([source](https://embracethered.com/blog/posts/2025/claude-code-exfiltration-via-dns-requests/))
+→ *What the sandbox does:* it removes the class of bug, not this one instance. A slightly-too-generous allowlist is a mistake waiting to recur, and the sandbox doesn't depend on that list being right. Direct DNS queries (`dig`) can't reach a DNS server from inside it (tested on macOS). Whether the system resolver can still leak a single lookup hasn't been tested, so the `.env` guard and the credential denies are the second line.
+
+**3. A malicious npm package that drafted the victim's AI agent (Nx "s1ngularity", Aug 2025).** Hijacked releases of the Nx build tool ran a `postinstall` script that "scanned user's file system for text files, collected paths, and credentials". It tried to run local AI CLIs, Claude Code included, with their permission checks switched off to hunt for more. It uploaded the results to a new public GitHub repo under the victim's own account, and appended `sudo shutdown -h 0` to `.zshrc` and `.bashrc`. ([advisory](https://github.com/nrwl/nx/security/advisories/GHSA-cxm3-wv7p-598c))
+→ *What the sandbox does:* when Claude runs `npm install`, the install script inherits the sandbox. Shell startup files aren't writable, listed credentials aren't readable, and `github.com`/`api.github.com` aren't in `allowedDomains` (deliberately: anyone can receive data there), so the upload fails. An AI CLI it starts is sandboxed too.
+
+**4. A self-spreading npm worm (Shai-Hulud, Sep and Nov 2025).** Infected packages ran a `postinstall` that scanned the disk for secrets with TruffleHog, dumped environment variables, queried cloud metadata endpoints for credentials, and exfiltrated through GitHub. Then it used any npm token it found to publish itself into the victim's own packages. ([analysis](https://sysdig.com/blog/shai-hulud-the-novel-self-replicating-worm-infecting-hundreds-of-npm-packages))
+→ *What the sandbox does:* `GITHUB_TOKEN` and `NPM_TOKEN` are unset and `~/.npmrc` is unreadable inside it, the metadata endpoints and GitHub aren't reachable, so it finds no token and has nowhere to send what it does find. `registry.npmjs.org` *is* allowed (installs need it), which is exactly why the npm token is on the deny list.
+
+**What the sandbox does not cover**, so you know where the other layers matter:
+- **Installs you run in your own terminal.** The sandbox wraps Claude's shell, not yours.
+- **Claude's Read, Edit and Write tools.** They run outside it, which is why `guard-scope.py` exists.
+- **Content of allowed connections.** The proxy filters by hostname and doesn't inspect encrypted traffic, so every domain on the allowlist is a place data *could* go. Keep the list short.
 
 What each key does:
 
@@ -30,7 +51,7 @@ What each key does:
 | `network.allowedDomains` | Package registries and GitHub's download hosts. `github.com` and `api.github.com` are deliberately **not** listed: anyone can receive data there (a gist, an issue), so they make a good exfiltration channel. Add the hosts your work needs. |
 | `network.allowLocalBinding: true` | Dev servers and local databases need to bind to localhost. |
 | `filesystem.allowWrite` | Package caches (`~/.npm` here; add `~/Library/pnpm/store` or `~/.local/share/pnpm/store` for pnpm). Without them, installs fail in confusing ways. |
-| `credentials` | Commands can **read most of your machine by default**, including `~/.ssh` and cloud keys. Listing them with `"mode": "deny"` blocks reads and unsets the env vars inside the sandbox. Add every credential file and token variable you have. **Only honoured from user or managed settings.** |
+| `credentials` | Commands can **read most of your machine by default**, including `~/.ssh` and cloud keys. Listing them with `"mode": "deny"` blocks reads and unsets the env vars inside the sandbox. Add every credential file and token variable you have. Denying `~/.npmrc` keeps an npm publish token away from install scripts; npm still installs public packages fine without it (tested), but a private registry that needs that token won't work sandboxed. **Only honoured from user or managed settings.** |
 | `excludedCommands` | `git fetch/push/pull` over SSH can't work sandboxed: the proxy filters HTTP(S), and SSH is raw TCP. Read-only `gh` commands are excluded because `gh` can fail TLS checks under Seatbelt. **Keep this list short.** Every entry is a command that runs with your full access. |
 
 Gotchas that come with it (also in `CLAUDE.md`): `/tmp` isn't writable (use `$TMPDIR`), `diff <(…)` fails, DNS tools like `dig` time out and still exit 0, and an excluded command only escapes when it's **alone on the line**. `cd repo && git pull` stays sandboxed and fails like an auth error.
@@ -101,7 +122,7 @@ Four rules, each from a real failure:
 | Rule | Blocks | Because |
 |---|---|---|
 | A | `rm -rf` chained with anything else, or aimed at `/`, `~`, `.git` or the workspace root | When `ls` and `rm` share a call, you read the list after the delete has already run. A failed `cd` before `rm -rf` deletes in the wrong directory. Build folders (`node_modules`, `dist`, …) are exempt. |
-| B | (warns) bare `git` with no repo context | In a folder of many repos, a quiet "Already up to date" can come from the wrong one. |
+| B | (notes) for `commit`, `push`, `pull`, `add`, `reset` and other state-changing git verbs: which repo it will actually run in | In a folder of many repos, with a shell cwd that persists and sometimes silently resets, a commit or push can land in the wrong repo, and "Already up to date" can come from the wrong one. Read-only git stays silent, so the note only appears when it matters. |
 | C | a sandbox-excluded command (`git push`, `gh pr view`) sharing its line with anything | Only a line where every part matches `excludedCommands` leaves the sandbox. `cd x && git pull` stays sandboxed and fails like an auth error, and the next retry goes wrong. |
 | D | `$TMPDIR` in an unsandboxed call | `$TMPDIR` points somewhere different inside and outside the sandbox, so files "vanish". |
 

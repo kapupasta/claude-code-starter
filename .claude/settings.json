@@ -103,7 +103,9 @@
       "files": [
         { "path": "~/.ssh", "mode": "deny" },
         { "path": "~/.aws/credentials", "mode": "deny" },
-        { "path": "~/.claude.json", "mode": "deny" }
+        { "path": "~/.claude.json", "mode": "deny" },
+        { "path": "~/.npmrc", "mode": "deny" },
+        { "path": "~/.config/gh", "mode": "deny" }
       ],
       "envVars": [
         { "name": "GITHUB_TOKEN", "mode": "deny" },

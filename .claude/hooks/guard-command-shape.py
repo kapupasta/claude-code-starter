@@ -13,12 +13,14 @@ Rule A - a recursive delete must be its own Bash call.  [BLOCK]
   PRIOR call whose output was actually read. Build artifacts (.next,
   node_modules, ...) are exempt: `rm -rf .next && pnpm build` is a safe idiom.
 
-Rule B - `git` should be scoped to a repo.  [WARN]
-  A workspace root that is itself a git repo holding nested project repos makes
-  a bare `git status` silently report on whichever repo the shell's cwd happens
-  to be in, and cwd persists across tool calls. Use `git -C <path> ...` or
-  `cd <path> && git ...`. Warn-only: it also fires on legitimate bare git in
-  single-repo sessions.
+Rule B - name the repo a state-changing `git` will hit.  [NOTE]
+  A workspace root that is itself a git repo holding nested project repos, plus
+  a shell cwd that persists (and sometimes silently resets) across tool calls,
+  makes a wrong-repo commit or push easy. For write/remote verbs (commit, push,
+  pull, add, reset, checkout, ...) the hook resolves where git will actually run
+  (`-C`, a preceding `cd`, else the session cwd) and adds one line to Claude's
+  context naming that repo. Read-only verbs stay silent. (Testing for a `cd`
+  doesn't work: Claude Code strips a redundant leading `cd <cwd> &&`.)
 
 Rule C - a sandbox-excluded command must stand alone.  [BLOCK]
   Since Claude Code 2.1.277, EVERY part of a Bash line must match
@@ -215,33 +217,88 @@ def check_delete_shape(command, workspace_root=None):
     return None
 
 
-def check_git_scope(command):
-    """Rule B. Returns a warn reason, or None."""
-    segs = segments(command)
-    saw_cd = False
-    for seg in segs:
+# Rule B only speaks up for git verbs that change a repo or talk to its remote.
+# Read-only verbs (status, log, diff, show, rev-parse, ...) on the wrong repo cost
+# nothing but a confusing answer, so they stay silent.
+GIT_WRITE_VERBS = {
+    "add", "am", "apply", "checkout", "cherry-pick", "clean", "commit", "merge",
+    "mv", "pull", "push", "rebase", "reset", "restore", "revert", "rm", "stash",
+    "switch", "tag",
+}
+
+# git options that consume the following token as their value.
+GIT_OPTS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace"}
+
+
+def find_repo_root(path):
+    """Walk up from `path` to the nearest directory holding `.git` (dir or file).
+
+    :param path: absolute directory to start from.
+    :return: the repo root, or None when `path` is not inside a git repo.
+    """
+    current = os.path.abspath(path)
+    while True:
+        if os.path.exists(os.path.join(current, ".git")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            return None
+        current = parent
+
+
+def git_verb_and_dir(toks, base_dir):
+    """Split `git [opts] <verb> ...` into the verb and the directory git will run in.
+
+    :param toks: tokens of one segment, starting with "git".
+    :param base_dir: directory the segment runs in (cwd, or a preceding `cd`).
+    :return: (verb or None, directory).
+    """
+    run_dir = base_dir
+    i = 1
+    while i < len(toks):
+        tok = toks[i]
+        if tok in GIT_OPTS_WITH_VALUE:
+            if tok == "-C" and i + 1 < len(toks):
+                run_dir = os.path.join(run_dir, os.path.expanduser(toks[i + 1]))
+            i += 2
+            continue
+        if tok.startswith("-"):
+            i += 1
+            continue
+        return tok, run_dir
+    return None, run_dir
+
+
+def check_git_scope(command, cwd=""):
+    """Rule B. Name the repo a state-changing git command will hit.
+
+    Claude Code strips a redundant leading `cd <cwd> &&` before the hook sees the
+    command, so "is there a cd?" can't be the test (it fires on every git call).
+    Instead: resolve where git will actually run (`-C`, a preceding `cd`, else the
+    session cwd) and say which repo that is, for write/remote verbs only.
+
+    :param command: the Bash command string.
+    :param cwd: the session cwd from the PreToolUse payload.
+    :return: a context note naming the target repo, or None.
+    """
+    run_dir = cwd or os.getcwd()
+    for seg in segments(command):
         toks = tokens(seg)
         if not toks:
             continue
-        if toks[0] == "cd":
-            saw_cd = True
+        if toks[0] == "cd" and len(toks) > 1:
+            run_dir = os.path.join(run_dir, os.path.expanduser(toks[1]))
             continue
         if toks[0] != "git":
             continue
-        if "-C" in toks:
+        verb, git_dir = git_verb_and_dir(toks, run_dir)
+        if verb not in GIT_WRITE_VERBS:
             continue
-        if saw_cd:
-            continue
+        root = find_repo_root(git_dir) or "(not inside a git repo)"
         return (
-            "Command-shape guard (warning): unscoped `git` — no `-C <path>` and no "
-            "preceding `cd`.\n"
-            "  Command: {}\n"
-            "If your workspace root is itself a git repo with nested project repos, "
-            "and since the shell's cwd persists between tool calls, a bare git command can "
-            "silently report on, or commit to, the wrong repository. "
-            "Prefer `git -C /abs/path ...` or `cd /abs/path && git ...`.".format(
-                command.strip()[:200]
-            )
+            "Command-shape guard (note): `git {}` will run in repo {}. "
+            "If that is not the repo you mean, stop and target it explicitly; "
+            "nested repos make a wrong-repo {} easy.".format(verb, root, verb)
         )
     return None
 
@@ -643,7 +700,7 @@ def main():
             pretool_deny(escape)
             return
 
-    warning = check_git_scope(command)
+    warning = check_git_scope(command, event.get("cwd") or "")
     if warning:
         pretool_context(warning)
 
